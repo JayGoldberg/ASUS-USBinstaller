@@ -1,0 +1,56 @@
+#!/bin/sh
+
+## @author  Jay Goldberg
+## @email  jaymgoldberg@gmail.com
+## @description installs and persists itself on an ASUSWRT router, courtesy
+##              of USB autorun
+## @license  MIT
+## @usage copy this script a USB drive under asusware.arm/.asusrouter and 
+#         asusware/.asusrouter. Insert into router's USB port, wait 30 secs.
+#=======================================================================
+
+# wait for network services to be ready
+i=0
+while [ $i -le 20 ]; do
+  success_start_service=$(nvram get success_start_service)
+  if [ "$success_start_service" == "1" ]; then
+    break
+  fi
+  i=$(($i+1))
+  echo "autorun APP: wait $i seconds..."
+  sleep 1
+done
+
+hostname=$(nvram get ddns_hostname_x)
+
+mkdir /jffs/scripts
+
+# if the script on this USB drive (mounted at /opt/.asusrouter)
+# is newer than what's on JFFS, copy it over
+if [ '/opt/.asusrouter' -nt '/jffs/scripts/asusrouter' ]; then
+  cp /opt/.asusrouter /jffs/scripts/asusrouter
+fi
+
+# if this script is not set to execute on insertion of a USB drive, make it so
+if [ ! "$(nvram get script_usbmount)" == "/jffs/scripts/asusrouter" ]; then
+  nvram set script_usbmount="/jffs/scripts/asusrouter"
+  COMMIT=true
+fi
+
+# another possibly interesting nvram key
+#nvram set script_usbhotplug=
+
+# make sure this script runs every 5 mins using the cron utilty
+cru l | grep autorun
+[ $? -ne 0 ] && cru a autorun "*/5 * * * * /jffs/scripts/asusrouter"
+
+##################### DO YOUR CUSTOM ACTIONS HERE
+# make sure whatever tasks you do are idempotent (they can be run
+# repeatedly with intended results)
+
+###### Some ideas:
+#
+# * DynDNS or sending some data to an outside source using HTTP, FTP (wget)
+
+# if changes were done to nvram, commit them
+[ "$COMMIT" == "true" ] && nvram commit
